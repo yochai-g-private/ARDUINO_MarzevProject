@@ -1,0 +1,207 @@
+/*
+ Name:		Marzev.ino
+ Created:	11/11/2019 6:11:16 PM
+ Author:	YLA
+*/
+
+#include "NYG.h"
+#include "Logger.h"
+#include "Timer.h"
+#include "Toggler.h"
+#include "RedGreenLed.h"
+#include "IInput.h"
+#include "StableInput.h"
+#include "IOutput.h"
+#include "Observer.h"
+
+using namespace NYG;
+
+//-----------------------------------------------------
+//	Pin numbers
+//-----------------------------------------------------
+
+enum PIN_NUMBERS
+{
+	BOTTOM_LEVEL_PIN	= D2,
+	TOP_LEVEL_PIN		= D3,
+	RED_LED_PIN			= D6,
+	GREEN_LED_PIN		= D7,
+	POMP_RELAY_PIN		= D9,
+};
+
+//-----------------------------------------------------
+//	I/O elements
+//-----------------------------------------------------
+
+static DigitalPullupInputPin	_bottom_level_sensor(BOTTOM_LEVEL_PIN),
+								_top_level_sensor(TOP_LEVEL_PIN);
+
+typedef StableDigitalInput<60000, 10000, millis>	LevelInput;
+
+static LevelInput				_bottom_level(_bottom_level_sensor),
+								_top_level(_top_level_sensor);
+
+static DigitalObserver			bottom_level_observer(_bottom_level),
+								top_level_observer(_top_level);
+
+static RedGreenLed				led(RED_LED_PIN, GREEN_LED_PIN);
+
+static DigitalOutputPin			pump(POMP_RELAY_PIN);
+
+//-----------------------------------------------------
+//	Other...
+//-----------------------------------------------------
+
+static Timer					stop_pumping_timer;
+static Timer					start_pumping_timer;
+static Toggler					led_toggler;
+//--------------------------------------------------------------
+void setup()
+{
+	LOGGER << "Ready" << NL;
+}
+//--------------------------------------------------------------
+static void stop_pumping()
+{
+	pump.Off();
+	led.SetOff();
+	stop_pumping_timer.Stop();
+	start_pumping_timer.Stop();
+
+	if (!bottom_level_observer.GetValue() && top_level_observer.GetValue())
+	{
+		LOGGER << "Pumping stopped due to sensor failure" << NL;
+		led_toggler.StartOnOff(led.GetRed(), 200);
+	}
+	else
+	{
+		LOGGER << "Pumping stopped" << NL;
+		led_toggler.Start(led.GetGreen(), 300, 9700);
+	}
+}
+//--------------------------------------------------------------
+static void delay_pumping()
+{
+	unsigned long delay_minutes = 5;
+	LOGGER << "Pumping delayed for " << delay_minutes << " minutes" << NL;
+	pump.Off();
+	led.SetOff();
+
+	stop_pumping_timer.Stop();
+	start_pumping_timer.StartOnce(delay_minutes * 60000UL);
+
+	led_toggler.Start(led.GetRed(), 500, 9500);
+}
+//--------------------------------------------------------------
+static bool start_pumping()
+{
+	if (!bottom_level_observer.GetValue())
+		return false;
+
+	LOGGER << "Start pumping!" << NL;
+	pump.On();
+	led.SetOff();
+
+	start_pumping_timer.Stop();
+
+	if (top_level_observer.GetValue())
+	{
+		stop_pumping_timer.Stop();
+		led_toggler.StartOnOff(led.GetRed(), 250);
+	}
+	else
+	{
+		stop_pumping_timer.StartOnce(300000UL);
+		led_toggler.StartOnOff(led.GetRed(), 1000);
+	}
+
+	return true;
+}
+//--------------------------------------------------------------
+void loop()
+{
+	delay(50);
+
+	// First get inputs
+	bool bottom_overflow, bottom_overflow_changed,
+		 top_overflow,	  top_overflow_changed;
+
+	bottom_overflow = bottom_level_observer.Get(&bottom_overflow_changed);
+	top_overflow	= top_level_observer.   Get(&top_overflow_changed);
+
+	if (bottom_overflow_changed)
+		LOGGER << "Bottom level: " << bottom_overflow << NL;
+
+	if (top_overflow_changed)
+		LOGGER << "Top level: " << top_overflow << NL;
+
+	bool overflow_changed = bottom_overflow_changed || top_overflow_changed;
+
+	if (!overflow_changed)
+	{
+		bool _stop_pumping = stop_pumping_timer.Test();
+
+		if (_stop_pumping)
+		{
+			if (bottom_overflow)
+			{
+				delay_pumping();
+			}
+			else
+			{
+				stop_pumping();
+			}
+		}
+
+		bool _start_pumping = start_pumping_timer.Test();
+
+		if (_start_pumping)
+		{
+			start_pumping();
+		}
+
+		return;
+	}
+
+	int overflow_state = (int)bottom_overflow + ((int)top_overflow * 2);
+
+	switch (overflow_state)
+	{
+		case 0 :
+		{
+			stop_pumping();
+			break;
+		}
+
+		case 1:
+		{
+			if (bottom_overflow_changed)
+			{
+				// The water level goes up
+				delay_pumping();
+			}
+			else
+			{
+				// The water level goes down
+				start_pumping();
+			}
+
+			break;
+		}
+
+		case 2:
+		{
+			// Discrepancy
+			stop_pumping();
+			break;
+		}
+
+		case 3:
+		{
+			start_pumping();
+			break;
+		}
+	}
+
+}
+
