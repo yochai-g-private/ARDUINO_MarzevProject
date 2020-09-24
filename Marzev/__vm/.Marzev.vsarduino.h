@@ -19,10 +19,11 @@
 #define _VMDEBUG 1
 #define _USE_LOGGER 1
 #define _USE_TIME_EX 1
-#define _USE_RTC 1
-#define _USE_EEPROM_JURNAL 1
+#define _USE_RTC 0
+#define _USE_EEPROM 0
+#define _USE_EEPROM_JURNAL 0
 #define F_CPU 16000000L
-#define ARDUINO 108010
+#define ARDUINO 108013
 #define ARDUINO_AVR_NANO
 #define ARDUINO_ARCH_AVR
 #define __cplusplus 201103L

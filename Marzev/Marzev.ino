@@ -26,7 +26,9 @@
 #include "Observer.h"
 //#include "Scheduler.h"
 #include "MicroController.h"
+#if _USE_EEPROM_JURNAL
 #include "EepromJurnal.h"
+#endif //_USE_EEPROM_JURNAL
 
 using namespace NYG;
 
@@ -228,7 +230,8 @@ void setup()
 //	setTimeFromBuildTime();
 #endif //_USE_RTC
 
-	EepromJurnalWriter::Begin();
+#if _USE_EEPROM_JURNAL
+    EepromJurnalWriter::Begin();
 //	EepromJurnalWriter::Clean();
 	EepromJurnalReader::PrintOut();
 
@@ -236,6 +239,8 @@ void setup()
 
 	EepromJurnalWriter::Write("==============");
 	EepromJurnalWriter::SetLoggerAux();
+#endif //_USE_EEPROM_JURNAL
+    
 //#if _USE_MICRO_SD
 //	LOGGER << "MicroSD #1: " << MicroController::GetAvailableMemory() << NL;
 //	micro_sd_OK = MicroSD::Begin();
@@ -676,8 +681,10 @@ static void treat_serial_input()
 
 	LOGGER << "Command '" << s << "' got from serial" << NL;
 
-	if (RTC::SetFromSerial(s))
+#if _USE_RTC
+    if (RTC::SetFromSerial(s))
 		return;
+#endif //_USE_RTC
 
 	if (s == "RESTART")
 	{
